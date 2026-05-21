@@ -1,65 +1,275 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm, type AnyFieldApi } from "@tanstack/react-form";
+import { Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  checkFormSchema,
+  defaultCheckFormValues,
+} from "@/lib/schemas/check-form";
+import { useResultStore, type CheckResult } from "@/lib/stores/result-store";
+
+function FieldError({ field }: { field: AnyFieldApi }) {
+  if (!field.state.meta.isTouched) return null;
+
+  const messages = field.state.meta.errors
+    .map((error) =>
+      typeof error === "string" ? error : (error?.message ?? null),
+    )
+    .filter((message): message is string => Boolean(message));
+
+  if (messages.length === 0) return null;
+
+  return (
+    <p role="alert" className="text-xs text-destructive">
+      {messages[0]}
+    </p>
+  );
+}
 
 export default function Home() {
+  const router = useRouter();
+  const setResult = useResultStore((state) => state.setResult);
+  const [requestError, setRequestError] = useState<string | null>(null);
+
+  const form = useForm({
+    defaultValues: defaultCheckFormValues,
+    validators: {
+      onChange: checkFormSchema,
+      onSubmit: checkFormSchema,
+    },
+    onSubmit: async ({ value }) => {
+      setRequestError(null);
+      try {
+        const response = await fetch("/api/parse-doc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(value),
+        });
+
+        const payload = (await response.json()) as
+          | CheckResult
+          | { error: string };
+
+        if (!response.ok || "error" in payload) {
+          const message =
+            "error" in payload ? payload.error : "Failed to parse the document";
+          setRequestError(message);
+          return;
+        }
+
+        setResult(payload);
+        router.push("/result");
+      } catch (err) {
+        setRequestError(
+          err instanceof Error ? err.message : "Unexpected error",
+        );
+      }
+    },
+  });
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="flex flex-1 items-center justify-center bg-background px-4 py-12">
+      <Card className="w-full max-w-xl">
+        <CardHeader>
+          <CardTitle className="text-xl">Check article</CardTitle>
+          <CardDescription>
+            Paste a Google Doc link and set the expected ranges for images and
+            product links.
+          </CardDescription>
+        </CardHeader>
+
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void form.handleSubmit();
+          }}
+          className="space-y-6"
+        >
+          <CardContent className="space-y-6">
+            <form.Field name="docUrl">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>Google Doc link</Label>
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://docs.google.com/document/d/..."
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    aria-invalid={
+                      field.state.meta.isTouched &&
+                      field.state.meta.errors.length > 0
+                    }
+                  />
+                  <FieldError field={field} />
+                </div>
+              )}
+            </form.Field>
+
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">Images</legend>
+              <div className="grid grid-cols-2 gap-4">
+                <form.Field name="minImages">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>Min</Label>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        type="number"
+                        min={0}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) =>
+                          field.handleChange(event.target.valueAsNumber)
+                        }
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors.length > 0
+                        }
+                      />
+                      <FieldError field={field} />
+                    </div>
+                  )}
+                </form.Field>
+                <form.Field name="maxImages">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>Max</Label>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        type="number"
+                        min={0}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) =>
+                          field.handleChange(event.target.valueAsNumber)
+                        }
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors.length > 0
+                        }
+                      />
+                      <FieldError field={field} />
+                    </div>
+                  )}
+                </form.Field>
+              </div>
+            </fieldset>
+
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">Product links</legend>
+              <div className="grid grid-cols-2 gap-4">
+                <form.Field name="minProductLinks">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>Min</Label>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        type="number"
+                        min={0}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) =>
+                          field.handleChange(event.target.valueAsNumber)
+                        }
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors.length > 0
+                        }
+                      />
+                      <FieldError field={field} />
+                    </div>
+                  )}
+                </form.Field>
+                <form.Field name="maxProductLinks">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>Max</Label>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        type="number"
+                        min={0}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) =>
+                          field.handleChange(event.target.valueAsNumber)
+                        }
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          field.state.meta.errors.length > 0
+                        }
+                      />
+                      <FieldError field={field} />
+                    </div>
+                  )}
+                </form.Field>
+              </div>
+            </fieldset>
+
+            {requestError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {requestError}
+              </p>
+            ) : null}
+
+            <form.Subscribe selector={(state) => state.isSubmitting}>
+              {(isSubmitting) =>
+                isSubmitting ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Fetching and parsing the document…
+                  </div>
+                ) : null
+              }
+            </form.Subscribe>
+          </CardContent>
+
+          <CardFooter className="justify-end">
+            <form.Subscribe
+              selector={(state) => ({
+                canSubmit: state.canSubmit,
+                isSubmitting: state.isSubmitting,
+              })}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+              {({ canSubmit, isSubmitting }) => (
+                <Button type="submit" disabled={!canSubmit || isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Checking…
+                    </>
+                  ) : (
+                    "Check"
+                  )}
+                </Button>
+              )}
+            </form.Subscribe>
+          </CardFooter>
+        </form>
+      </Card>
+    </main>
   );
 }
