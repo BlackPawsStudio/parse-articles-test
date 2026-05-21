@@ -49,7 +49,7 @@ export const useResultStore = create<ResultState>()(
     {
       name: "parse-articles-result",
       storage: createJSONStorage(() => localStorage),
-      version: 9,
+      version: 11,
       migrate: () => ({ result: null, formValues: null }),
     },
   ),

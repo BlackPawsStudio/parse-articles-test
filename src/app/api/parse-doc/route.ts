@@ -3,6 +3,11 @@ import * as cheerio from "cheerio";
 import { html as beautifyHtml } from "js-beautify";
 import { z } from "zod";
 
+import {
+  formatSpellGrammarIssue,
+  runSpellGrammarCheck,
+} from "@/lib/ai/spell-grammar-check";
+
 const requestSchema = z.object({
   docUrl: z.string().min(1),
   brandName: z.string().trim().min(1),
@@ -411,6 +416,15 @@ export async function POST(request: Request) {
     errors.push(
       `Expected at most ${maxProductLinks} brand link(s) (containing "${brandName}"), found ${brandLinkCount}.`,
     );
+  }
+
+  const aiReview = await runSpellGrammarCheck(text);
+  if (aiReview.ok) {
+    for (const issue of aiReview.issues) {
+      errors.push(formatSpellGrammarIssue(issue));
+    }
+  } else {
+    console.warn("AI spell/grammar check skipped:", aiReview.error);
   }
 
   return NextResponse.json({

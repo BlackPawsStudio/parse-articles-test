@@ -262,7 +262,8 @@ export default function Home() {
                 isSubmitting ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="size-4 animate-spin" />
-                    Fetching and parsing the document…
+                    Fetching, parsing, and running the AI spelling &amp;
+                    grammar check…
                   </div>
                 ) : null
               }
