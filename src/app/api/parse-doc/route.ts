@@ -143,22 +143,19 @@ export async function POST(request: Request) {
 
   const $ = cheerio.load(html);
 
-  $("style, script, meta, link").remove();
-  $("[style]").removeAttr("style");
-  $("[class]").removeAttr("class");
-  $("[id]").removeAttr("id");
+  const googleStyles = $("style")
+    .map((_, el) => $(el).html() ?? "")
+    .get()
+    .join("\n");
+  const headTitle = $("title").text().trim();
+
+  $("script").remove();
+  $("head").empty();
 
   $("a[href]").each((_, el) => {
     const $el = $(el);
     const resolved = unwrapGoogleRedirect($el.attr("href") ?? "", exportUrl);
     $el.attr("href", resolved);
-  });
-
-  $("span").each((_, el) => {
-    const $el = $(el);
-    if (Object.keys(el.attribs).length === 0) {
-      $el.replaceWith($el.contents());
-    }
   });
 
   const driveImageMap = new Map<
@@ -212,8 +209,19 @@ export async function POST(request: Request) {
       dataUrl: fetched.dataUrl,
     });
 
-    const $img = $("<img>").attr("src", fetched.dataUrl).attr("alt", alt);
-    $target.replaceWith($img);
+    const $img = $("<img>")
+      .attr("src", fetched.dataUrl)
+      .attr("alt", alt)
+      .attr(
+        "style",
+        "max-width: 100%; height: auto; display: block; margin: 1em auto;",
+      );
+
+    if ($block.length > 0) {
+      $block.empty().append($img);
+    } else {
+      $a.replaceWith($img);
+    }
   }
 
   const images: Array<{ src: string; alt: string; link?: string }> = $("img")
@@ -246,7 +254,7 @@ export async function POST(request: Request) {
 
   const heading =
     $("body").find("h1, h2, h3").first().text().trim() ||
-    $("title").text().trim() ||
+    headTitle ||
     null;
 
   const findAfterLabel = (label: string): string | null => {
@@ -267,23 +275,33 @@ export async function POST(request: Request) {
   const metaTitle = findAfterLabel("Meta\\s*Title");
   const metaDescription = findAfterLabel("Meta\\s*description");
 
-  const bodyInner = ($("body").html() ?? "").trim();
-  const titleTag = `<title>${escapeHtmlAttr(heading ?? "")}</title>`;
-  const metaTitleTag = metaTitle
-    ? `<meta name="title" content="${escapeHtmlAttr(metaTitle)}">`
-    : "";
-  const metaDescriptionTag = metaDescription
-    ? `<meta name="description" content="${escapeHtmlAttr(metaDescription)}">`
-    : "";
-  const rawHtmlDoc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">${titleTag}${metaTitleTag}${metaDescriptionTag}</head><body>${bodyInner}</body></html>`;
+  const $head = $("head");
+  $head.append(`<meta charset="UTF-8">`);
+  $head.append(`<title>${escapeHtmlAttr(heading ?? "")}</title>`);
+  if (metaTitle) {
+    $head.append(
+      `<meta name="title" content="${escapeHtmlAttr(metaTitle)}">`,
+    );
+  }
+  if (metaDescription) {
+    $head.append(
+      `<meta name="description" content="${escapeHtmlAttr(metaDescription)}">`,
+    );
+  }
+  if (googleStyles.trim().length > 0) {
+    $head.append(`<style>${googleStyles}</style>`);
+  }
+
+  const rawHtmlDoc = $.html();
 
   const formattedHtml = beautifyHtml(rawHtmlDoc, {
     indent_size: 2,
-    wrap_line_length: 120,
+    wrap_line_length: 0,
     preserve_newlines: false,
     end_with_newline: true,
     indent_inner_html: true,
     extra_liners: ["head", "body"],
+    content_unformatted: ["style", "script"],
   });
 
   const errors: string[] = [...driveErrors];
