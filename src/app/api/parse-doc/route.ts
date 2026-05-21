@@ -5,11 +5,22 @@ import { z } from "zod";
 
 const requestSchema = z.object({
   docUrl: z.string().min(1),
+  brandName: z.string().trim().min(1),
   minImages: z.number().int().nonnegative(),
   maxImages: z.number().int().nonnegative(),
   minProductLinks: z.number().int().nonnegative(),
   maxProductLinks: z.number().int().nonnegative(),
 });
+
+function isBrandLink(href: string, brandName: string): boolean {
+  const url = href.toLowerCase();
+  const brand = brandName.toLowerCase().trim();
+  if (!brand) return false;
+  if (url.includes(brand)) return true;
+  const compact = brand.replace(/\s+/g, "");
+  if (compact && url.includes(compact)) return true;
+  return false;
+}
 
 const DOC_ID_PATTERN = /\/document\/d\/([\w-]+)/;
 
@@ -134,8 +145,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const { docUrl, minImages, maxImages, minProductLinks, maxProductLinks } =
-    parsed.data;
+  const {
+    docUrl,
+    brandName,
+    minImages,
+    maxImages,
+    minProductLinks,
+    maxProductLinks,
+  } = parsed.data;
 
   const docId = extractDocId(docUrl);
   if (!docId) {
@@ -302,11 +319,18 @@ export async function POST(request: Request) {
     .filter((link) => link.href && isExternalHttpUrl(link.href));
 
   const seenHrefs = new Set<string>();
-  const links = linksRaw.filter((link) => {
-    if (seenHrefs.has(link.href)) return false;
-    seenHrefs.add(link.href);
-    return true;
-  });
+  const links = linksRaw
+    .filter((link) => {
+      if (seenHrefs.has(link.href)) return false;
+      seenHrefs.add(link.href);
+      return true;
+    })
+    .map((link) => ({
+      ...link,
+      isBrand: isBrandLink(link.href, brandName),
+    }));
+
+  const brandLinkCount = links.filter((link) => link.isBrand).length;
 
   const text = $("body")
     .find("p, h1, h2, h3, h4, h5, h6, li, blockquote")
@@ -378,14 +402,14 @@ export async function POST(request: Request) {
       `Expected at most ${maxImages} image(s), found ${images.length}.`,
     );
   }
-  if (links.length < minProductLinks) {
+  if (brandLinkCount < minProductLinks) {
     errors.push(
-      `Expected at least ${minProductLinks} product link(s), found ${links.length}.`,
+      `Expected at least ${minProductLinks} brand link(s) (containing "${brandName}"), found ${brandLinkCount}.`,
     );
   }
-  if (links.length > maxProductLinks) {
+  if (brandLinkCount > maxProductLinks) {
     errors.push(
-      `Expected at most ${maxProductLinks} product link(s), found ${links.length}.`,
+      `Expected at most ${maxProductLinks} brand link(s) (containing "${brandName}"), found ${brandLinkCount}.`,
     );
   }
 

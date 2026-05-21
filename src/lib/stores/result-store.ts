@@ -13,6 +13,7 @@ export type ParsedImage = {
 export type ParsedLink = {
   text: string;
   href: string;
+  isBrand: boolean;
 };
 
 export type CheckResult = {
@@ -44,7 +45,7 @@ export const useResultStore = create<ResultState>()(
     {
       name: "parse-articles-result",
       storage: createJSONStorage(() => localStorage),
-      version: 7,
+      version: 8,
       migrate: () => ({ result: null }),
     },
   ),

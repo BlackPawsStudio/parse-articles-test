@@ -125,6 +125,28 @@ export default function Home() {
               )}
             </form.Field>
 
+            <form.Field name="brandName">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>Brand name</Label>
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    type="text"
+                    placeholder="e.g. Nike"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    aria-invalid={
+                      field.state.meta.isTouched &&
+                      field.state.meta.errors.length > 0
+                    }
+                  />
+                  <FieldError field={field} />
+                </div>
+              )}
+            </form.Field>
+
             <fieldset className="space-y-3">
               <legend className="text-sm font-medium">Images</legend>
               <div className="grid grid-cols-2 gap-4">

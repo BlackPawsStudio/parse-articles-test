@@ -199,6 +199,43 @@ export default function ResultPage() {
     { label: "Meta description", value: metaDescription },
   ];
 
+  const upload = async () => {
+    if (!heading) return;
+    setIsUploading(true);
+    setUploadError(null);
+    setUploadResult(null);
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: uploadTarget,
+          article: {
+            docUrl,
+            title: heading,
+            metaTitle,
+            metaDescription,
+            html,
+            images,
+            links,
+          },
+        }),
+      });
+      const payload = (await response.json()) as
+        | UploadResult
+        | { error: string };
+      if (!response.ok || "error" in payload) {
+        setUploadError("error" in payload ? payload.error : "Upload failed");
+      } else {
+        setUploadResult(payload);
+      }
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
     <main className="flex flex-1 items-start justify-center px-4 py-12">
       <Card className="w-full max-w-5xl">
@@ -273,12 +310,8 @@ export default function ResultPage() {
 
           <Tabs defaultValue="errors" className="w-full">
             <TabsList>
-              <TabsTrigger value="errors">
-                Errors ({errors.length})
-              </TabsTrigger>
-              <TabsTrigger value="images">
-                Images ({images.length})
-              </TabsTrigger>
+              <TabsTrigger value="errors">Errors ({errors.length})</TabsTrigger>
+              <TabsTrigger value="images">Images ({images.length})</TabsTrigger>
               <TabsTrigger value="links">Links ({links.length})</TabsTrigger>
             </TabsList>
 
@@ -339,6 +372,7 @@ export default function ResultPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Link</TableHead>
+                      <TableHead className="w-32">Brand link</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -370,6 +404,17 @@ export default function ResultPage() {
                               )}
                             </a>
                           </TableCell>
+                          <TableCell>
+                            <span
+                              className={
+                                link.isBrand
+                                  ? "font-medium text-primary"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {link.isBrand ? "true" : "false"}
+                            </span>
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -377,99 +422,63 @@ export default function ResultPage() {
                 </Table>
               )}
             </TabsContent>
-
           </Tabs>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-            <Select
-              value={uploadTarget}
-              onValueChange={(value) => setUploadTarget(value as UploadTarget)}
-              disabled={isUploading}
-            >
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="Select target" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="wordpress">WordPress</SelectItem>
-                <SelectItem value="shopify">Shopify</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col flex-wrap items-end gap-2 pt-2">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  clear();
+                }}
+                disabled={isUploading}
+              >
+                Clear
+              </Button>
+              <Button asChild>
+                <Link href="/">Check another</Link>
+              </Button>
+            </div>
 
-            <Button
-              type="button"
-              disabled={errors.length > 0 || isUploading || !heading}
-              title={
-                errors.length > 0
-                  ? "Resolve the errors before uploading"
-                  : !heading
-                    ? "Article title is required"
-                    : undefined
-              }
-              onClick={async () => {
-                if (!heading) return;
-                setIsUploading(true);
-                setUploadError(null);
-                setUploadResult(null);
-                try {
-                  const response = await fetch("/api/upload", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      target: uploadTarget,
-                      article: {
-                        docUrl,
-                        title: heading,
-                        metaTitle,
-                        metaDescription,
-                        html,
-                        images,
-                        links,
-                      },
-                    }),
-                  });
-                  const payload = (await response.json()) as
-                    | UploadResult
-                    | { error: string };
-                  if (!response.ok || "error" in payload) {
-                    setUploadError(
-                      "error" in payload
-                        ? payload.error
-                        : "Upload failed",
-                    );
-                  } else {
-                    setUploadResult(payload);
-                  }
-                } catch (err) {
-                  setUploadError(
-                    err instanceof Error ? err.message : "Unexpected error",
-                  );
-                } finally {
-                  setIsUploading(false);
+            <div className="flex gap-2">
+              <Select
+                value={uploadTarget}
+                onValueChange={(value) =>
+                  setUploadTarget(value as UploadTarget)
                 }
-              }}
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Uploading…
-                </>
-              ) : (
-                "Upload"
-              )}
-            </Button>
+                disabled={isUploading}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Select target" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wordpress">WordPress</SelectItem>
+                  <SelectItem value="shopify">Shopify</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <Button
-              variant="outline"
-              onClick={() => {
-                clear();
-              }}
-              disabled={isUploading}
-            >
-              Clear
-            </Button>
-            <Button asChild>
-              <Link href="/">Check another</Link>
-            </Button>
+              <Button
+                type="button"
+                disabled={errors.length > 0 || isUploading || !heading}
+                title={
+                  errors.length > 0
+                    ? "Resolve the errors before uploading"
+                    : !heading
+                      ? "Article title is required"
+                      : undefined
+                }
+                onClick={upload}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Uploading…
+                  </>
+                ) : (
+                  "Upload"
+                )}
+              </Button>
+            </div>
           </div>
 
           {uploadError ? (

@@ -14,6 +14,7 @@ export const checkFormSchema = z
       .trim()
       .min(1, "Google Doc link is required")
       .regex(GOOGLE_DOC_PATTERN, "Must be a valid Google Doc URL"),
+    brandName: z.string().trim().min(1, "Brand name is required"),
     minImages: nonNegativeInt,
     maxImages: nonNegativeInt,
     minProductLinks: nonNegativeInt,
@@ -32,6 +33,7 @@ export type CheckFormValues = z.infer<typeof checkFormSchema>;
 
 export const defaultCheckFormValues: CheckFormValues = {
   docUrl: "",
+  brandName: "",
   minImages: 1,
   maxImages: 10,
   minProductLinks: 1,
