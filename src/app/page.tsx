@@ -20,7 +20,8 @@ import {
   checkFormSchema,
   defaultCheckFormValues,
 } from "@/lib/schemas/check-form";
-import { useResultStore, type CheckResult } from "@/lib/stores/result-store";
+import { useResultStore } from "@/lib/stores/result-store";
+import { trpc } from "@/trpc/react";
 
 function FieldError({ field }: { field: AnyFieldApi }) {
   if (!field.state.meta.isTouched) return null;
@@ -45,6 +46,8 @@ export default function Home() {
   const setResult = useResultStore((state) => state.setResult);
   const [requestError, setRequestError] = useState<string | null>(null);
 
+  const parseDoc = trpc.parseDoc.useMutation();
+
   const form = useForm({
     defaultValues: defaultCheckFormValues,
     validators: {
@@ -54,28 +57,12 @@ export default function Home() {
     onSubmit: async ({ value }) => {
       setRequestError(null);
       try {
-        const response = await fetch("/api/parse-doc", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(value),
-        });
-
-        const payload = (await response.json()) as
-          | CheckResult
-          | { error: string };
-
-        if (!response.ok || "error" in payload) {
-          const message =
-            "error" in payload ? payload.error : "Failed to parse the document";
-          setRequestError(message);
-          return;
-        }
-
-        setResult(payload, value);
+        const result = await parseDoc.mutateAsync(value);
+        setResult(result, value);
         router.push("/result");
       } catch (err) {
         setRequestError(
-          err instanceof Error ? err.message : "Unexpected error",
+          err instanceof Error ? err.message : "Failed to parse the document",
         );
       }
     },

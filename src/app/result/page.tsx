@@ -3,6 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Loader2, RefreshCw } from "lucide-react";
+import type { inferRouterOutputs } from "@trpc/server";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,25 +41,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useResultStore,
-  type CheckResult,
   type ParsedImage,
 } from "@/lib/stores/result-store";
+import { trpc } from "@/trpc/react";
+import type { AppRouter } from "@/server/root";
 
 type UploadTarget = "wordpress" | "shopify";
 
-type UploadResult = {
-  ok: true;
-  target: UploadTarget;
-  request: {
-    endpoint: string;
-    method: string;
-    headers: Record<string, string>;
-    body: unknown;
-  };
-  response: unknown;
-  durationMs: number;
-  note?: string;
-};
+type UploadResult = inferRouterOutputs<AppRouter>["upload"];
 
 function truncate(value: string, max = 80): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
@@ -155,6 +145,9 @@ export default function ResultPage() {
   const clear = useResultStore((state) => state.clear);
   const hydrated = useHasHydrated();
 
+  const parseDocMutation = trpc.parseDoc.useMutation();
+  const uploadMutation = trpc.upload.useMutation();
+
   const [uploadTarget, setUploadTarget] = useState<UploadTarget>("wordpress");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -212,23 +205,12 @@ export default function ResultPage() {
     setIsRefreshing(true);
     setRefreshError(null);
     try {
-      const response = await fetch("/api/parse-doc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formValues),
-      });
-      const payload = (await response.json()) as
-        | CheckResult
-        | { error: string };
-      if (!response.ok || "error" in payload) {
-        setRefreshError(
-          "error" in payload ? payload.error : "Failed to refresh the document",
-        );
-        return;
-      }
-      setResult(payload, formValues);
+      const refreshed = await parseDocMutation.mutateAsync(formValues);
+      setResult(refreshed, formValues);
     } catch (err) {
-      setRefreshError(err instanceof Error ? err.message : "Unexpected error");
+      setRefreshError(
+        err instanceof Error ? err.message : "Failed to refresh the document",
+      );
     } finally {
       setIsRefreshing(false);
     }
@@ -240,32 +222,21 @@ export default function ResultPage() {
     setUploadError(null);
     setUploadResult(null);
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          target: uploadTarget,
-          article: {
-            docUrl,
-            title: heading,
-            metaTitle,
-            metaDescription,
-            html,
-            images,
-            links,
-          },
-        }),
+      const uploaded = await uploadMutation.mutateAsync({
+        target: uploadTarget,
+        article: {
+          docUrl,
+          title: heading,
+          metaTitle,
+          metaDescription,
+          html,
+          images,
+          links,
+        },
       });
-      const payload = (await response.json()) as
-        | UploadResult
-        | { error: string };
-      if (!response.ok || "error" in payload) {
-        setUploadError("error" in payload ? payload.error : "Upload failed");
-      } else {
-        setUploadResult(payload);
-      }
+      setUploadResult(uploaded);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Unexpected error");
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setIsUploading(false);
     }

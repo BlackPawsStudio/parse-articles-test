@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
+
+import { publicProcedure } from "@/server/trpc";
 
 const articleSchema = z.object({
   docUrl: z.string(),
@@ -124,38 +125,25 @@ function buildMockResponse(target: "wordpress" | "shopify", title: string) {
   };
 }
 
-export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+export const uploadProcedure = publicProcedure
+  .input(uploadSchema)
+  .mutation(async ({ input }) => {
+    const { target, article } = input;
 
-  const parsed = uploadSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid request payload", issues: parsed.error.issues },
-      { status: 400 },
-    );
-  }
+    const mockRequest =
+      target === "wordpress"
+        ? buildWordpressRequest(article)
+        : buildShopifyRequest(article);
 
-  const { target, article } = parsed.data;
+    const startedAt = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
-  const mockRequest =
-    target === "wordpress"
-      ? buildWordpressRequest(article)
-      : buildShopifyRequest(article);
-
-  const startedAt = Date.now();
-  await new Promise((resolve) => setTimeout(resolve, 800));
-
-  return NextResponse.json({
-    ok: true,
-    target,
-    request: mockRequest,
-    response: buildMockResponse(target, article.title),
-    durationMs: Date.now() - startedAt,
-    note: "This is a mocked response. Replace the placeholder credentials and call the real endpoint to publish.",
+    return {
+      ok: true as const,
+      target,
+      request: mockRequest,
+      response: buildMockResponse(target, article.title),
+      durationMs: Date.now() - startedAt,
+      note: "This is a mocked response. Replace the placeholder credentials and call the real endpoint to publish.",
+    };
   });
-}
