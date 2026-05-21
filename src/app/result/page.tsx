@@ -44,25 +44,38 @@ function useHasHydrated() {
   );
 }
 
-type ImageStatus = "loading" | "ok" | "broken";
+type ImageStatus = "loading" | "ok" | "no-access" | "not-found" | "broken";
+
+const STATUS_LABELS: Record<Exclude<ImageStatus, "loading" | "ok">, string> = {
+  "no-access": "No access",
+  "not-found": "Not found",
+  broken: "Broken",
+};
 
 function ImageRow({ image, index }: { image: ParsedImage; index: number }) {
-  const [status, setStatus] = useState<ImageStatus>("loading");
+  const [status, setStatus] = useState<ImageStatus>(image.problem ?? "loading");
   const linkHref = image.link ?? image.src;
   const linkLabel = image.link ?? image.src;
+  const isPreknownProblem = image.problem !== undefined;
 
   return (
     <TableRow>
       <TableCell className="w-20 align-top">
         <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-md border bg-muted">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={image.src}
-            alt={image.alt || `Image ${index + 1}`}
-            onLoad={() => setStatus("ok")}
-            onError={() => setStatus("broken")}
-            className="h-full w-full object-cover"
-          />
+          {status === "loading" || status === "ok" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={image.src}
+              alt={image.alt || `Image ${index + 1}`}
+              onLoad={() => setStatus("ok")}
+              onError={() => setStatus("broken")}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              N/A
+            </span>
+          )}
         </div>
       </TableCell>
       <TableCell className="max-w-0 align-top">
@@ -91,7 +104,16 @@ function ImageRow({ image, index }: { image: ParsedImage; index: number }) {
         ) : status === "ok" ? (
           <span className="font-medium text-primary">Working</span>
         ) : (
-          <span className="font-medium text-destructive">Broken</span>
+          <span
+            className={
+              status === "no-access"
+                ? "font-medium text-amber-600"
+                : "font-medium text-destructive"
+            }
+            title={isPreknownProblem ? STATUS_LABELS[status] : undefined}
+          >
+            {STATUS_LABELS[status]}
+          </span>
         )}
       </TableCell>
     </TableRow>
@@ -291,21 +313,37 @@ export default function ResultPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {links.map((link, index) => (
-                      <TableRow key={`${link}-${index}`}>
-                        <TableCell className="max-w-0">
-                          <a
-                            href={link}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={link}
-                            className="block truncate text-primary underline-offset-4 hover:underline"
-                          >
-                            {link}
-                          </a>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {links.map((link, index) => {
+                      const showText = link.text && link.text !== link.href;
+                      return (
+                        <TableRow key={`${link.href}-${index}`}>
+                          <TableCell className="max-w-0">
+                            <a
+                              href={link.href}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={link.href}
+                              className="block text-primary underline-offset-4 hover:underline"
+                            >
+                              {showText ? (
+                                <>
+                                  <span className="block truncate font-medium">
+                                    {link.text}
+                                  </span>
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {link.href}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="block truncate">
+                                  {link.href}
+                                </span>
+                              )}
+                            </a>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}

@@ -52,24 +52,54 @@ function extractDriveId(href: string): string | null {
   return null;
 }
 
+export type ImageProblem = "no-access" | "not-found" | "broken";
+
 type DriveFetchResult =
   | { ok: true; dataUrl: string }
-  | { ok: false; error: string };
+  | { ok: false; problem: ImageProblem; error: string };
 
 async function fetchDriveImage(id: string): Promise<DriveFetchResult> {
   const url = `https://drive.google.com/uc?export=download&id=${id}`;
   try {
     const res = await fetch(url, { redirect: "follow" });
+    if (res.status === 403 || res.status === 401) {
+      return {
+        ok: false,
+        problem: "no-access",
+        error: `Drive responded with ${res.status} — the file is not shared publicly.`,
+      };
+    }
+    if (res.status === 404) {
+      return {
+        ok: false,
+        problem: "not-found",
+        error: "Drive responded with 404 — the file does not exist.",
+      };
+    }
     if (!res.ok) {
-      return { ok: false, error: `Drive responded with ${res.status}` };
+      return {
+        ok: false,
+        problem: "broken",
+        error: `Drive responded with ${res.status}.`,
+      };
     }
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.startsWith("image/")) {
+      const lowered = contentType.toLowerCase();
+      if (lowered.startsWith("text/html")) {
+        return {
+          ok: false,
+          problem: "no-access",
+          error:
+            "Drive returned an HTML page instead of an image — the file is likely not shared publicly or is too large to auto-download.",
+        };
+      }
       return {
         ok: false,
-        error: `Drive file is not publicly accessible or not an image (received ${
+        problem: "broken",
+        error: `Drive returned a non-image response (received ${
           contentType || "unknown content type"
-        })`,
+        }).`,
       };
     }
     const buffer = Buffer.from(await res.arrayBuffer());
@@ -78,6 +108,7 @@ async function fetchDriveImage(id: string): Promise<DriveFetchResult> {
   } catch (err) {
     return {
       ok: false,
+      problem: "broken",
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -164,6 +195,12 @@ export async function POST(request: Request) {
   >();
   const driveErrors: string[] = [];
   const driveCache = new Map<string, DriveFetchResult>();
+  const brokenDriveImages: Array<{
+    src: string;
+    alt: string;
+    link?: string;
+    problem: ImageProblem;
+  }> = [];
 
   const placeholderEls = $("a")
     .toArray()
@@ -182,15 +219,21 @@ export async function POST(request: Request) {
     const href = $a.attr("href") ?? "";
     const driveId = extractDriveId(href);
 
-    if (!driveId) {
-      driveErrors.push(`${linkText}: could not extract Drive id from ${href}`);
-      continue;
-    }
-
     const $block = $a.closest("p, h1, h2, h3, h4, h5, h6, li, blockquote");
     const $target = $block.length > 0 ? $block : $a;
     const altMatch = $target.text().match(ALT_TAG_PATTERN);
     const alt = altMatch ? altMatch[1].trim() : "";
+
+    if (!driveId) {
+      driveErrors.push(`${linkText}: could not extract Drive id from ${href}`);
+      brokenDriveImages.push({
+        src: href,
+        alt,
+        link: href,
+        problem: "broken",
+      });
+      continue;
+    }
 
     let fetched = driveCache.get(driveId);
     if (!fetched) {
@@ -200,6 +243,12 @@ export async function POST(request: Request) {
 
     if (!fetched.ok) {
       driveErrors.push(`${linkText}: ${fetched.error}`);
+      brokenDriveImages.push({
+        src: href,
+        alt,
+        link: href,
+        problem: fetched.problem,
+      });
       continue;
     }
 
@@ -224,7 +273,12 @@ export async function POST(request: Request) {
     }
   }
 
-  const images: Array<{ src: string; alt: string; link?: string }> = $("img")
+  const images: Array<{
+    src: string;
+    alt: string;
+    link?: string;
+    problem?: ImageProblem;
+  }> = $("img")
     .map((_, el) => {
       const src = $(el).attr("src") ?? "";
       const alt = ($(el).attr("alt") ?? "").trim();
@@ -237,13 +291,22 @@ export async function POST(request: Request) {
     .get()
     .filter((image) => image.src.length > 0);
 
-  const linksRaw = $("a")
-    .map((_, el) => $(el).attr("href") ?? "")
-    .get()
-    .filter(Boolean)
-    .filter(isExternalHttpUrl);
+  images.push(...brokenDriveImages);
 
-  const links = Array.from(new Set(linksRaw));
+  const linksRaw = $("a")
+    .map((_, el) => ({
+      text: $(el).text().replace(/\s+/g, " ").trim(),
+      href: $(el).attr("href") ?? "",
+    }))
+    .get()
+    .filter((link) => link.href && isExternalHttpUrl(link.href));
+
+  const seenHrefs = new Set<string>();
+  const links = linksRaw.filter((link) => {
+    if (seenHrefs.has(link.href)) return false;
+    seenHrefs.add(link.href);
+    return true;
+  });
 
   const text = $("body")
     .find("p, h1, h2, h3, h4, h5, h6, li, blockquote")

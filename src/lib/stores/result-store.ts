@@ -1,10 +1,18 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
+export type ImageProblem = "no-access" | "not-found" | "broken";
+
 export type ParsedImage = {
   src: string;
   alt: string;
   link?: string;
+  problem?: ImageProblem;
+};
+
+export type ParsedLink = {
+  text: string;
+  href: string;
 };
 
 export type CheckResult = {
@@ -15,7 +23,7 @@ export type CheckResult = {
   text: string;
   html: string;
   images: ParsedImage[];
-  links: string[];
+  links: ParsedLink[];
   errors: string[];
   checkedAt: number;
 };
@@ -36,7 +44,7 @@ export const useResultStore = create<ResultState>()(
     {
       name: "parse-articles-result",
       storage: createJSONStorage(() => localStorage),
-      version: 5,
+      version: 7,
       migrate: () => ({ result: null }),
     },
   ),
