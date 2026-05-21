@@ -71,7 +71,7 @@ export default function Home() {
           return;
         }
 
-        setResult(payload);
+        setResult(payload, value);
         router.push("/result");
       } catch (err) {
         setRequestError(

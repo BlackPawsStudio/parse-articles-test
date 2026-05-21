@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -38,7 +38,11 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { useResultStore, type ParsedImage } from "@/lib/stores/result-store";
+import {
+  useResultStore,
+  type CheckResult,
+  type ParsedImage,
+} from "@/lib/stores/result-store";
 
 type UploadTarget = "wordpress" | "shopify";
 
@@ -146,6 +150,8 @@ function ImageRow({ image, index }: { image: ParsedImage; index: number }) {
 
 export default function ResultPage() {
   const result = useResultStore((state) => state.result);
+  const formValues = useResultStore((state) => state.formValues);
+  const setResult = useResultStore((state) => state.setResult);
   const clear = useResultStore((state) => state.clear);
   const hydrated = useHasHydrated();
 
@@ -153,6 +159,8 @@ export default function ResultPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   if (!hydrated) {
     return (
@@ -198,6 +206,33 @@ export default function ResultPage() {
     { label: "Meta Title", value: metaTitle },
     { label: "Meta description", value: metaDescription },
   ];
+
+  const refresh = async () => {
+    if (!formValues) return;
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const response = await fetch("/api/parse-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formValues),
+      });
+      const payload = (await response.json()) as
+        | CheckResult
+        | { error: string };
+      if (!response.ok || "error" in payload) {
+        setRefreshError(
+          "error" in payload ? payload.error : "Failed to refresh the document",
+        );
+        return;
+      }
+      setResult(payload, formValues);
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const upload = async () => {
     if (!heading) return;
@@ -431,12 +466,35 @@ export default function ResultPage() {
                 onClick={() => {
                   clear();
                 }}
-                disabled={isUploading}
+                disabled={isUploading || isRefreshing}
               >
                 Clear
               </Button>
               <Button asChild>
                 <Link href="/">Check another</Link>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={refresh}
+                disabled={!formValues || isUploading || isRefreshing}
+                title={
+                  !formValues
+                    ? "Original form values are unavailable — submit the form again"
+                    : undefined
+                }
+              >
+                {isRefreshing ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Refreshing…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="size-4" />
+                    Refresh
+                  </>
+                )}
               </Button>
             </div>
 
@@ -480,6 +538,12 @@ export default function ResultPage() {
               </Button>
             </div>
           </div>
+
+          {refreshError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {refreshError}
+            </p>
+          ) : null}
 
           {uploadError ? (
             <p role="alert" className="text-sm text-destructive">

@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
+import type { CheckFormValues } from "@/lib/schemas/check-form";
+
 export type ImageProblem = "no-access" | "not-found" | "broken";
 
 export type ParsedImage = {
@@ -31,7 +33,8 @@ export type CheckResult = {
 
 type ResultState = {
   result: CheckResult | null;
-  setResult: (result: CheckResult) => void;
+  formValues: CheckFormValues | null;
+  setResult: (result: CheckResult, formValues: CheckFormValues) => void;
   clear: () => void;
 };
 
@@ -39,14 +42,15 @@ export const useResultStore = create<ResultState>()(
   persist(
     (set) => ({
       result: null,
-      setResult: (result) => set({ result }),
-      clear: () => set({ result: null }),
+      formValues: null,
+      setResult: (result, formValues) => set({ result, formValues }),
+      clear: () => set({ result: null, formValues: null }),
     }),
     {
       name: "parse-articles-result",
       storage: createJSONStorage(() => localStorage),
-      version: 8,
-      migrate: () => ({ result: null }),
+      version: 9,
+      migrate: () => ({ result: null, formValues: null }),
     },
   ),
 );
