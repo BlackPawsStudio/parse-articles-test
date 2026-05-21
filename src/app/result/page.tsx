@@ -69,8 +69,23 @@ export default function ResultPage() {
     );
   }
 
-  const { images, links, errors, docUrl, text } = result;
+  const {
+    images,
+    links,
+    errors,
+    docUrl,
+    text,
+    heading,
+    metaTitle,
+    metaDescription,
+  } = result;
   const rowCount = Math.max(images.length, links.length, errors.length);
+
+  const fields: Array<{ label: string; value: string | null }> = [
+    { label: "Article title", value: heading },
+    { label: "Meta Title", value: metaTitle },
+    { label: "Meta description", value: metaDescription },
+  ];
 
   return (
     <main className="flex flex-1 items-start justify-center px-4 py-12">
@@ -89,7 +104,29 @@ export default function ResultPage() {
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
+          <dl className="grid gap-3 sm:grid-cols-[max-content_1fr] sm:gap-x-6">
+            {fields.map((field) => (
+              <div
+                key={field.label}
+                className="contents sm:contents"
+              >
+                <dt className="text-sm font-medium text-muted-foreground">
+                  {field.label}
+                </dt>
+                <dd
+                  className={
+                    field.value
+                      ? "text-sm"
+                      : "text-sm italic text-muted-foreground"
+                  }
+                >
+                  {field.value ?? "Not found"}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
           <div className="space-y-2">
             <Label htmlFor="doc-text">Document text</Label>
             <Textarea

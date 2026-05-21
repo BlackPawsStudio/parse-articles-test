@@ -8,6 +8,9 @@ export type ParsedImage = {
 
 export type CheckResult = {
   docUrl: string;
+  heading: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
   text: string;
   images: ParsedImage[];
   links: string[];
@@ -31,7 +34,7 @@ export const useResultStore = create<ResultState>()(
     {
       name: "parse-articles-result",
       storage: createJSONStorage(() => localStorage),
-      version: 2,
+      version: 3,
       migrate: () => ({ result: null }),
     },
   ),

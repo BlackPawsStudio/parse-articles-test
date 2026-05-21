@@ -116,6 +116,29 @@ export async function POST(request: Request) {
     .filter(Boolean)
     .join("\n");
 
+  const heading =
+    $("body").find("h1, h2, h3").first().text().trim() ||
+    $("title").text().trim() ||
+    null;
+
+  const findAfterLabel = (label: string): string | null => {
+    const pattern = new RegExp(
+      `^\\s*${label}\\s*[:\\-\u2013\u2014]?\\s*(.+)$`,
+      "i",
+    );
+    for (const line of text.split("\n")) {
+      const match = line.match(pattern);
+      if (match) {
+        const value = match[1].trim();
+        if (value) return value;
+      }
+    }
+    return null;
+  };
+
+  const metaTitle = findAfterLabel("Meta\\s*Title");
+  const metaDescription = findAfterLabel("Meta\\s*description");
+
   const errors: string[] = [];
   if (images.length < minImages) {
     errors.push(
@@ -140,6 +163,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     docUrl,
+    heading,
+    metaTitle,
+    metaDescription,
     text,
     images,
     links,
