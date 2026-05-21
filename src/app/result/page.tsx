@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,13 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -31,6 +39,22 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useResultStore, type ParsedImage } from "@/lib/stores/result-store";
+
+type UploadTarget = "wordpress" | "shopify";
+
+type UploadResult = {
+  ok: true;
+  target: UploadTarget;
+  request: {
+    endpoint: string;
+    method: string;
+    headers: Record<string, string>;
+    body: unknown;
+  };
+  response: unknown;
+  durationMs: number;
+  note?: string;
+};
 
 function truncate(value: string, max = 80): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
@@ -124,6 +148,11 @@ export default function ResultPage() {
   const result = useResultStore((state) => state.result);
   const clear = useResultStore((state) => state.clear);
   const hydrated = useHasHydrated();
+
+  const [uploadTarget, setUploadTarget] = useState<UploadTarget>("wordpress");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
 
   if (!hydrated) {
     return (
@@ -351,12 +380,90 @@ export default function ResultPage() {
 
           </Tabs>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+            <Select
+              value={uploadTarget}
+              onValueChange={(value) => setUploadTarget(value as UploadTarget)}
+              disabled={isUploading}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Select target" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wordpress">WordPress</SelectItem>
+                <SelectItem value="shopify">Shopify</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              type="button"
+              disabled={errors.length > 0 || isUploading || !heading}
+              title={
+                errors.length > 0
+                  ? "Resolve the errors before uploading"
+                  : !heading
+                    ? "Article title is required"
+                    : undefined
+              }
+              onClick={async () => {
+                if (!heading) return;
+                setIsUploading(true);
+                setUploadError(null);
+                setUploadResult(null);
+                try {
+                  const response = await fetch("/api/upload", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      target: uploadTarget,
+                      article: {
+                        docUrl,
+                        title: heading,
+                        metaTitle,
+                        metaDescription,
+                        html,
+                        images,
+                        links,
+                      },
+                    }),
+                  });
+                  const payload = (await response.json()) as
+                    | UploadResult
+                    | { error: string };
+                  if (!response.ok || "error" in payload) {
+                    setUploadError(
+                      "error" in payload
+                        ? payload.error
+                        : "Upload failed",
+                    );
+                  } else {
+                    setUploadResult(payload);
+                  }
+                } catch (err) {
+                  setUploadError(
+                    err instanceof Error ? err.message : "Unexpected error",
+                  );
+                } finally {
+                  setIsUploading(false);
+                }
+              }}
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Uploading…
+                </>
+              ) : (
+                "Upload"
+              )}
+            </Button>
+
             <Button
               variant="outline"
               onClick={() => {
                 clear();
               }}
+              disabled={isUploading}
             >
               Clear
             </Button>
@@ -364,6 +471,92 @@ export default function ResultPage() {
               <Link href="/">Check another</Link>
             </Button>
           </div>
+
+          {uploadError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {uploadError}
+            </p>
+          ) : null}
+
+          <Dialog
+            open={uploadResult !== null}
+            onOpenChange={(open) => {
+              if (!open) setUploadResult(null);
+            }}
+          >
+            <DialogContent className="flex max-h-[90vh] flex-col gap-4 sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>
+                  Mock upload to{" "}
+                  {uploadResult?.target === "shopify" ? "Shopify" : "WordPress"}
+                </DialogTitle>
+                <DialogDescription>
+                  Nothing was actually published — this shows the request that
+                  would be sent and the response shape the platform returns.
+                </DialogDescription>
+              </DialogHeader>
+
+              {uploadResult ? (
+                <div className="-mr-2 min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Endpoint
+                    </Label>
+                    <p className="break-all rounded-md border bg-muted px-3 py-2 font-mono text-xs">
+                      {uploadResult.request.method}{" "}
+                      {uploadResult.request.endpoint}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Request headers
+                    </Label>
+                    <Textarea
+                      readOnly
+                      spellCheck={false}
+                      value={JSON.stringify(
+                        uploadResult.request.headers,
+                        null,
+                        2,
+                      )}
+                      className="h-28 w-full resize-y font-mono text-xs whitespace-pre"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Request body
+                    </Label>
+                    <Textarea
+                      readOnly
+                      spellCheck={false}
+                      value={JSON.stringify(uploadResult.request.body, null, 2)}
+                      className="h-56 w-full resize-y font-mono text-xs whitespace-pre"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Mock response ({uploadResult.durationMs} ms)
+                    </Label>
+                    <Textarea
+                      readOnly
+                      spellCheck={false}
+                      value={JSON.stringify(uploadResult.response, null, 2)}
+                      className="h-32 w-full resize-y font-mono text-xs whitespace-pre"
+                    />
+                  </div>
+
+                  {uploadResult.note ? (
+                    <p className="text-xs text-muted-foreground">
+                      {uploadResult.note}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
     </main>
