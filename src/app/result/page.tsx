@@ -115,10 +115,7 @@ export default function ResultPage() {
         <CardContent className="space-y-6">
           <dl className="grid gap-3 sm:grid-cols-[max-content_1fr] sm:gap-x-6">
             {fields.map((field) => (
-              <div
-                key={field.label}
-                className="contents sm:contents"
-              >
+              <div key={field.label} className="contents sm:contents">
                 <dt className="text-sm font-medium text-muted-foreground">
                   {field.label}
                 </dt>

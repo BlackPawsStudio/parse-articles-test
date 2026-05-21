@@ -42,6 +42,51 @@ function unwrapGoogleRedirect(href: string, base: string): string {
   }
 }
 
+const DRIVE_ID_PATTERNS: RegExp[] = [/\/file\/d\/([\w-]+)/, /[?&]id=([\w-]+)/];
+
+function extractDriveId(href: string): string | null {
+  for (const re of DRIVE_ID_PATTERNS) {
+    const match = href.match(re);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+type DriveFetchResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; error: string };
+
+async function fetchDriveImage(id: string): Promise<DriveFetchResult> {
+  const url = `https://drive.google.com/uc?export=download&id=${id}`;
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    if (!res.ok) {
+      return { ok: false, error: `Drive responded with ${res.status}` };
+    }
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) {
+      return {
+        ok: false,
+        error: `Drive file is not publicly accessible or not an image (received ${
+          contentType || "unknown content type"
+        })`,
+      };
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const base64 = buffer.toString("base64");
+    return { ok: true, dataUrl: `data:${contentType};base64,${base64}` };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+const PLACEHOLDER_LABEL_PATTERN = /^IMAGE\s+\d+\.?$/i;
+const ALT_TAG_PATTERN =
+  /Alt(?:\s*tag)?\s*:\s*(?:["'\u201C\u201D])?(.+?)(?:["'\u201C\u201D]|$)/i;
+
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -58,13 +103,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const {
-    docUrl,
-    minImages,
-    maxImages,
-    minProductLinks,
-    maxProductLinks,
-  } = parsed.data;
+  const { docUrl, minImages, maxImages, minProductLinks, maxProductLinks } =
+    parsed.data;
 
   const docId = extractDocId(docUrl);
   if (!docId) {
@@ -121,11 +161,64 @@ export async function POST(request: Request) {
     }
   });
 
+  const driveImageMap = new Map<string, { driveUrl: string; alt: string }>();
+  const driveErrors: string[] = [];
+  const driveCache = new Map<string, DriveFetchResult>();
+
+  const placeholderEls = $("a")
+    .toArray()
+    .filter((el) => {
+      const href = $(el).attr("href") ?? "";
+      const text = $(el).text().trim();
+      return (
+        href.includes("drive.google.com") &&
+        PLACEHOLDER_LABEL_PATTERN.test(text)
+      );
+    });
+
+  for (const el of placeholderEls) {
+    const $a = $(el);
+    const linkText = $a.text().trim();
+    const href = $a.attr("href") ?? "";
+    const driveId = extractDriveId(href);
+
+    if (!driveId) {
+      driveErrors.push(`${linkText}: could not extract Drive id from ${href}`);
+      continue;
+    }
+
+    const $block = $a.closest("p, h1, h2, h3, h4, h5, h6, li, blockquote");
+    const $target = $block.length > 0 ? $block : $a;
+    const altMatch = $target.text().match(ALT_TAG_PATTERN);
+    const alt = altMatch ? altMatch[1].trim() : "";
+
+    let fetched = driveCache.get(driveId);
+    if (!fetched) {
+      fetched = await fetchDriveImage(driveId);
+      driveCache.set(driveId, fetched);
+    }
+
+    if (!fetched.ok) {
+      driveErrors.push(`${linkText}: ${fetched.error}`);
+      continue;
+    }
+
+    driveImageMap.set(fetched.dataUrl, { driveUrl: href, alt });
+
+    const $img = $("<img>").attr("src", fetched.dataUrl).attr("alt", alt);
+    $target.replaceWith($img);
+  }
+
   const images = $("img")
-    .map((_, el) => ({
-      src: $(el).attr("src") ?? "",
-      alt: ($(el).attr("alt") ?? "").trim(),
-    }))
+    .map((_, el) => {
+      const src = $(el).attr("src") ?? "";
+      const alt = ($(el).attr("alt") ?? "").trim();
+      const mapped = driveImageMap.get(src);
+      if (mapped) {
+        return { src: mapped.driveUrl, alt: mapped.alt };
+      }
+      return { src, alt };
+    })
     .get()
     .filter((image) => image.src.length > 0);
 
@@ -186,10 +279,10 @@ export async function POST(request: Request) {
     extra_liners: ["head", "body"],
   });
 
-  const errors: string[] = [];
+  const errors: string[] = [...driveErrors];
   if (images.length < minImages) {
     errors.push(
-      `Expected at least ${minImages} image(s), found ${images.length}.`,
+      `Expected at least ${minImages} working image(s), found ${images.length}.`,
     );
   }
   if (images.length > maxImages) {
