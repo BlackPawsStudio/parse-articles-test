@@ -161,7 +161,10 @@ export async function POST(request: Request) {
     }
   });
 
-  const driveImageMap = new Map<string, { driveUrl: string; alt: string }>();
+  const driveImageMap = new Map<
+    string,
+    { driveUrl: string; alt: string; dataUrl: string }
+  >();
   const driveErrors: string[] = [];
   const driveCache = new Map<string, DriveFetchResult>();
 
@@ -203,19 +206,23 @@ export async function POST(request: Request) {
       continue;
     }
 
-    driveImageMap.set(fetched.dataUrl, { driveUrl: href, alt });
+    driveImageMap.set(fetched.dataUrl, {
+      driveUrl: href,
+      alt,
+      dataUrl: fetched.dataUrl,
+    });
 
     const $img = $("<img>").attr("src", fetched.dataUrl).attr("alt", alt);
     $target.replaceWith($img);
   }
 
-  const images = $("img")
+  const images: Array<{ src: string; alt: string; link?: string }> = $("img")
     .map((_, el) => {
       const src = $(el).attr("src") ?? "";
       const alt = ($(el).attr("alt") ?? "").trim();
       const mapped = driveImageMap.get(src);
       if (mapped) {
-        return { src: mapped.driveUrl, alt: mapped.alt };
+        return { src: mapped.dataUrl, alt: mapped.alt, link: mapped.driveUrl };
       }
       return { src, alt };
     })

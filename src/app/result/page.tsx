@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -24,13 +24,13 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { useResultStore } from "@/lib/stores/result-store";
+import { useResultStore, type ParsedImage } from "@/lib/stores/result-store";
 
 function truncate(value: string, max = 80): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
@@ -41,6 +41,60 @@ function useHasHydrated() {
     (callback) => useResultStore.persist.onFinishHydration(callback),
     () => useResultStore.persist.hasHydrated(),
     () => false,
+  );
+}
+
+type ImageStatus = "loading" | "ok" | "broken";
+
+function ImageRow({ image, index }: { image: ParsedImage; index: number }) {
+  const [status, setStatus] = useState<ImageStatus>("loading");
+  const linkHref = image.link ?? image.src;
+  const linkLabel = image.link ?? image.src;
+
+  return (
+    <TableRow>
+      <TableCell className="w-20 align-top">
+        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-md border bg-muted">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={image.src}
+            alt={image.alt || `Image ${index + 1}`}
+            onLoad={() => setStatus("ok")}
+            onError={() => setStatus("broken")}
+            className="h-full w-full object-cover"
+          />
+        </div>
+      </TableCell>
+      <TableCell className="max-w-0 align-top">
+        <a
+          href={linkHref}
+          target="_blank"
+          rel="noreferrer"
+          title={linkLabel}
+          className="block truncate text-primary underline-offset-4 hover:underline"
+        >
+          {truncate(linkLabel)}
+        </a>
+      </TableCell>
+      <TableCell className="max-w-0 align-top">
+        {image.alt ? (
+          <span className="block truncate" title={image.alt}>
+            {image.alt}
+          </span>
+        ) : (
+          <span className="italic text-muted-foreground">(no alt)</span>
+        )}
+      </TableCell>
+      <TableCell className="align-top">
+        {status === "loading" ? (
+          <span className="text-muted-foreground">Checking…</span>
+        ) : status === "ok" ? (
+          <span className="font-medium text-primary">Working</span>
+        ) : (
+          <span className="font-medium text-destructive">Broken</span>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -87,7 +141,6 @@ export default function ResultPage() {
     metaTitle,
     metaDescription,
   } = result;
-  const rowCount = Math.max(images.length, links.length, errors.length);
 
   const fields: Array<{ label: string; value: string | null }> = [
     { label: "Article title", value: heading },
@@ -167,86 +220,98 @@ export default function ResultPage() {
             />
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-1/3">Images</TableHead>
-                <TableHead className="w-1/3">Links</TableHead>
-                <TableHead className="w-1/3">Errors</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rowCount === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={3}
-                    className="text-center text-muted-foreground"
-                  >
-                    Nothing was extracted from the document.
-                  </TableCell>
-                </TableRow>
+          <Tabs defaultValue="errors" className="w-full">
+            <TabsList>
+              <TabsTrigger value="errors">
+                Errors ({errors.length})
+              </TabsTrigger>
+              <TabsTrigger value="images">
+                Images ({images.length})
+              </TabsTrigger>
+              <TabsTrigger value="links">Links ({links.length})</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="errors" className="pt-4">
+              {errors.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No issues found.
+                </p>
               ) : (
-                Array.from({ length: rowCount }).map((_, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="max-w-0 align-top">
-                      {images[index] ? (
-                        <a
-                          href={images[index].src}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={images[index].src}
-                          className="block text-primary underline-offset-4 hover:underline"
-                        >
-                          {images[index].alt ? (
-                            <span className="block truncate">
-                              {truncate(images[index].alt)}
-                            </span>
-                          ) : (
-                            <span className="block truncate italic text-muted-foreground">
-                              (no alt) {truncate(images[index].src, 60)}
-                            </span>
-                          )}
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-0 truncate align-top">
-                      {links[index] ? (
-                        <a
-                          href={links[index]}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={links[index]}
-                          className="text-primary underline-offset-4 hover:underline"
-                        >
-                          {truncate(links[index])}
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-0 align-top whitespace-normal">
-                      {errors[index] ? (
-                        <span className="text-destructive">
-                          {errors[index]}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                <ul className="space-y-2">
+                  {errors.map((error, index) => (
+                    <li
+                      key={`${index}-${error}`}
+                      className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+                    >
+                      {error}
+                    </li>
+                  ))}
+                </ul>
               )}
-            </TableBody>
-            <TableFooter>
-              <TableRow>
-                <TableCell>{images.length} total</TableCell>
-                <TableCell>{links.length} total</TableCell>
-                <TableCell>{errors.length} total</TableCell>
-              </TableRow>
-            </TableFooter>
-          </Table>
+            </TabsContent>
+
+            <TabsContent value="images" className="pt-4">
+              {images.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No images were extracted from the document.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-20">Preview</TableHead>
+                      <TableHead>Link</TableHead>
+                      <TableHead>Alt tag</TableHead>
+                      <TableHead className="w-32">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {images.map((image, index) => (
+                      <ImageRow
+                        key={`${image.src}-${index}`}
+                        image={image}
+                        index={index}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </TabsContent>
+
+            <TabsContent value="links" className="pt-4">
+              {links.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No links were extracted from the document.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Link</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {links.map((link, index) => (
+                      <TableRow key={`${link}-${index}`}>
+                        <TableCell className="max-w-0">
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={link}
+                            className="block truncate text-primary underline-offset-4 hover:underline"
+                          >
+                            {link}
+                          </a>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </TabsContent>
+
+          </Tabs>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button

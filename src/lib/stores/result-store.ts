@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 export type ParsedImage = {
   src: string;
   alt: string;
+  link?: string;
 };
 
 export type CheckResult = {
@@ -35,7 +36,7 @@ export const useResultStore = create<ResultState>()(
     {
       name: "parse-articles-result",
       storage: createJSONStorage(() => localStorage),
-      version: 4,
+      version: 5,
       migrate: () => ({ result: null }),
     },
   ),
