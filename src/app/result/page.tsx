@@ -11,6 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -74,7 +82,7 @@ export default function ResultPage() {
     links,
     errors,
     docUrl,
-    text,
+    html,
     heading,
     metaTitle,
     metaDescription,
@@ -128,13 +136,37 @@ export default function ResultPage() {
           </dl>
 
           <div className="space-y-2">
-            <Label htmlFor="doc-text">Document text</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="doc-html">Document HTML</Label>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" size="sm" variant="outline">
+                    Preview
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-4xl">
+                  <DialogHeader>
+                    <DialogTitle>HTML preview</DialogTitle>
+                    <DialogDescription>
+                      Rendered in a sandboxed iframe.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <iframe
+                    title="Document preview"
+                    sandbox=""
+                    srcDoc={html}
+                    className="h-[70vh] w-full rounded-md border bg-white"
+                  />
+                </DialogContent>
+              </Dialog>
+            </div>
             <Textarea
-              id="doc-text"
+              id="doc-html"
               readOnly
-              value={text}
-              className="h-56 resize-y font-mono text-xs"
-              placeholder="The document has no text content."
+              value={html}
+              spellCheck={false}
+              className="h-96 resize-y font-mono text-xs whitespace-pre"
+              placeholder="The document has no content."
             />
           </div>
 

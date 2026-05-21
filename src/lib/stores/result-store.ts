@@ -12,6 +12,7 @@ export type CheckResult = {
   metaTitle: string | null;
   metaDescription: string | null;
   text: string;
+  html: string;
   images: ParsedImage[];
   links: string[];
   errors: string[];
@@ -34,7 +35,7 @@ export const useResultStore = create<ResultState>()(
     {
       name: "parse-articles-result",
       storage: createJSONStorage(() => localStorage),
-      version: 3,
+      version: 4,
       migrate: () => ({ result: null }),
     },
   ),

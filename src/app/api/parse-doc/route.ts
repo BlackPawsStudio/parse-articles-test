@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as cheerio from "cheerio";
+import { html as beautifyHtml } from "js-beautify";
 import { z } from "zod";
 
 const requestSchema = z.object({
@@ -19,6 +20,26 @@ function extractDocId(url: string): string | null {
 
 function isExternalHttpUrl(href: string): boolean {
   return /^https?:\/\//i.test(href);
+}
+
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function unwrapGoogleRedirect(href: string, base: string): string {
+  try {
+    const url = new URL(href, base);
+    if (url.hostname === "www.google.com" && url.pathname === "/url") {
+      return url.searchParams.get("q") ?? href;
+    }
+    return url.toString();
+  } catch {
+    return href;
+  }
 }
 
 export async function POST(request: Request) {
@@ -82,6 +103,24 @@ export async function POST(request: Request) {
 
   const $ = cheerio.load(html);
 
+  $("style, script, meta, link").remove();
+  $("[style]").removeAttr("style");
+  $("[class]").removeAttr("class");
+  $("[id]").removeAttr("id");
+
+  $("a[href]").each((_, el) => {
+    const $el = $(el);
+    const resolved = unwrapGoogleRedirect($el.attr("href") ?? "", exportUrl);
+    $el.attr("href", resolved);
+  });
+
+  $("span").each((_, el) => {
+    const $el = $(el);
+    if (Object.keys(el.attribs).length === 0) {
+      $el.replaceWith($el.contents());
+    }
+  });
+
   const images = $("img")
     .map((_, el) => ({
       src: $(el).attr("src") ?? "",
@@ -94,17 +133,6 @@ export async function POST(request: Request) {
     .map((_, el) => $(el).attr("href") ?? "")
     .get()
     .filter(Boolean)
-    .map((href) => {
-      try {
-        const url = new URL(href, exportUrl);
-        if (url.hostname === "www.google.com" && url.pathname === "/url") {
-          return url.searchParams.get("q") ?? href;
-        }
-        return url.toString();
-      } catch {
-        return href;
-      }
-    })
     .filter(isExternalHttpUrl);
 
   const links = Array.from(new Set(linksRaw));
@@ -139,6 +167,25 @@ export async function POST(request: Request) {
   const metaTitle = findAfterLabel("Meta\\s*Title");
   const metaDescription = findAfterLabel("Meta\\s*description");
 
+  const bodyInner = ($("body").html() ?? "").trim();
+  const titleTag = `<title>${escapeHtmlAttr(heading ?? "")}</title>`;
+  const metaTitleTag = metaTitle
+    ? `<meta name="title" content="${escapeHtmlAttr(metaTitle)}">`
+    : "";
+  const metaDescriptionTag = metaDescription
+    ? `<meta name="description" content="${escapeHtmlAttr(metaDescription)}">`
+    : "";
+  const rawHtmlDoc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">${titleTag}${metaTitleTag}${metaDescriptionTag}</head><body>${bodyInner}</body></html>`;
+
+  const formattedHtml = beautifyHtml(rawHtmlDoc, {
+    indent_size: 2,
+    wrap_line_length: 120,
+    preserve_newlines: false,
+    end_with_newline: true,
+    indent_inner_html: true,
+    extra_liners: ["head", "body"],
+  });
+
   const errors: string[] = [];
   if (images.length < minImages) {
     errors.push(
@@ -167,6 +214,7 @@ export async function POST(request: Request) {
     metaTitle,
     metaDescription,
     text,
+    html: formattedHtml,
     images,
     links,
     errors,
